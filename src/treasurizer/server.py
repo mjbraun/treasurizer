@@ -6,12 +6,7 @@ import logging
 from fastmcp import FastMCP
 
 from treasurizer.client import get_client
-
-# TODO: Import tool registration functions once implemented
-# from treasurizer.tools.accounts import register_account_tools
-# from treasurizer.tools.ledger import register_ledger_tools
-# from treasurizer.tools.transactions import register_transaction_tools
-# from treasurizer.tools.reconciliation import register_reconciliation_tools
+from treasurizer.tools.accounts import register_account_tools
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +45,7 @@ Common discrepancy sources:
     )
 
     # Register all tools with access to the client factory
-    # TODO: Uncomment once tools are implemented
-    # register_account_tools(mcp, get_client)
-    # register_ledger_tools(mcp, get_client)
-    # register_transaction_tools(mcp, get_client)
-    # register_reconciliation_tools(mcp, get_client)
+    register_account_tools(mcp, get_client)
 
     return mcp
 

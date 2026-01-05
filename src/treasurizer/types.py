@@ -1,46 +1,60 @@
 # ABOUTME: Pydantic models for Treasurizer tool I/O
 # ABOUTME: Defines Account, Transaction, LedgerEntry, and related types
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
 
+def cents_to_decimal(cents: int | None) -> Decimal:
+    """Convert cents (integer) to Decimal dollars."""
+    if cents is None:
+        return Decimal("0.00")
+    return Decimal(cents) / 100
+
+
 class BankAccount(BaseModel):
-    """A bank account connected to PayHOA."""
+    """A bank account connected to PayHOA via Plaid."""
 
-    id: str
+    id: int
     name: str
-    account_number_last4: str | None = None
+    last4: str | None = None
     institution: str | None = None
-    balance: Decimal
-    as_of_date: date | None = None
+    plaid_balance: Decimal = Field(description="Balance from Plaid (bank)")
+    ledger_balance: Decimal = Field(description="Balance in PayHOA ledger")
+    pending_funds: Decimal = Field(default=Decimal("0.00"), description="Funds in transit")
+    unreviewed_count: int = Field(default=0, description="Unreviewed transactions")
+    last_synced: datetime | None = None
 
 
-class LedgerAccount(BaseModel):
-    """A ledger/GL account in PayHOA."""
+class Reconciliation(BaseModel):
+    """A completed bank reconciliation."""
 
-    id: str
-    name: str
-    account_number: str | None = None
-    account_type: str  # Asset, Liability, Equity, Income, Expense
-    balance: Decimal
+    id: int
+    start_date: date
+    end_date: date
+    starting_balance: Decimal
+    ending_balance: Decimal
+    total_deposits: Decimal
+    total_payments: Decimal
+    completed_at: datetime | None = None
 
 
 class Transaction(BaseModel):
     """A financial transaction in PayHOA."""
 
-    id: str
+    id: int
     date: date
     amount: Decimal
     description: str
     memo: str | None = None
-    category: str | None = None
-    account_id: str
-    account_name: str
+    category_id: int | None = None
+    bank_account_id: int
     is_pending: bool = False
-    check_number: str | None = None
+    is_approved: bool = True
+    is_reconciled: bool = False
+    reconciliation_id: int | None = None
 
 
 class LedgerEntry(BaseModel):
