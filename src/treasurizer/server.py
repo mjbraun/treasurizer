@@ -7,6 +7,7 @@ from fastmcp import FastMCP
 
 from treasurizer.client import get_client
 from treasurizer.tools.accounts import register_account_tools
+from treasurizer.tools.reports import register_report_tools
 from treasurizer.tools.transactions import register_transaction_tools
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,7 @@ Common discrepancy sources:
     # Register all tools with access to the client factory
     register_account_tools(mcp, get_client)
     register_transaction_tools(mcp, get_client)
+    register_report_tools(mcp, get_client)
 
     return mcp
 
