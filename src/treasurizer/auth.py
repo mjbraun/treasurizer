@@ -1,11 +1,12 @@
 # ABOUTME: Authentication module for PayHOA
-# ABOUTME: Handles login via Playwright, session management, and API access
+# ABOUTME: Handles login via HTTP API, session management, and API access
 
-import asyncio
+import base64
 import json
 import logging
 import os
 import subprocess
+import urllib.parse
 from pathlib import Path
 from typing import Any
 
@@ -105,8 +106,7 @@ class PayHOASession:
     """
     Manages an authenticated session with PayHOA.
 
-    Uses Playwright to automate browser login and extract JWT token
-    and cookies for API access.
+    Uses direct HTTP API login to obtain JWT token for API access.
     """
 
     def __init__(self, org_id: int | None = None) -> None:
@@ -123,87 +123,87 @@ class PayHOASession:
             return self._session_data["org_id"]
         raise AuthenticationError("Organization ID not available - login first")
 
+    def _decode_jwt(self, token: str) -> dict:
+        """Decode JWT payload without verification."""
+        payload_b64 = token.split(".")[1]
+        # Add padding if needed
+        payload_b64 += "=" * (4 - len(payload_b64) % 4)
+        return json.loads(base64.urlsafe_b64decode(payload_b64))
+
     async def login(self) -> None:
         """
-        Authenticate with PayHOA using Playwright browser automation.
+        Authenticate with PayHOA via HTTP API.
 
-        Opens a browser, navigates to login page, enters credentials,
-        and captures the JWT token and cookies.
+        First obtains a CSRF token, then posts credentials to get a JWT token.
+        Preserves session cookies for subsequent API calls.
         """
-        from playwright.async_api import async_playwright
-
         email, password = get_credentials()
 
-        logger.info("Starting browser login to PayHOA...")
+        logger.info("Logging in to PayHOA...")
 
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=False)
-            context = await browser.new_context()
-            page = await context.new_page()
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            # First, get the CSRF token by making a request that sets the cookie
+            init_response = await client.get(
+                f"{API_BASE_URL}/sanctum/csrf-cookie",
+                headers={
+                    "Accept": "application/json",
+                    "Origin": APP_URL,
+                    "Referer": f"{APP_URL}/",
+                },
+            )
 
-            # Navigate to login
-            await page.goto(f"{APP_URL}/login")
+            # Extract XSRF-TOKEN from cookies (it's URL-encoded)
+            xsrf_token = None
+            for cookie in client.cookies.jar:
+                if cookie.name == "XSRF-TOKEN":
+                    xsrf_token = urllib.parse.unquote(cookie.value)
+                    break
 
-            # Wait for login form
-            await page.wait_for_selector('input[type="email"], input[name="email"]')
+            if not xsrf_token:
+                raise AuthenticationError("Failed to obtain CSRF token")
 
-            # Fill credentials
-            await page.fill('input[type="email"], input[name="email"]', email)
-            await page.fill('input[type="password"], input[name="password"]', password)
+            # Now login with the CSRF token
+            response = await client.post(
+                f"{API_BASE_URL}/login",
+                json={"email": email, "password": password, "siteId": 2},
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "x-legfi-site-id": LEGFI_SITE_ID,
+                    "x-xsrf-token": xsrf_token,
+                    "Origin": APP_URL,
+                    "Referer": f"{APP_URL}/",
+                },
+            )
 
-            # Submit
-            await page.click('button[type="submit"]')
+            if response.status_code != 200:
+                raise AuthenticationError(
+                    f"Login failed with status {response.status_code}: {response.text}"
+                )
 
-            # Wait for navigation to dashboard (indicates successful login)
-            try:
-                await page.wait_for_url("**/dashboard**", timeout=30000)
-            except Exception:
-                # Try waiting for any authenticated page
-                await page.wait_for_selector('[class*="dashboard"], [class*="nav"]', timeout=30000)
+            data = response.json()
+            jwt_token = data.get("token")
 
-            # Extract JWT from localStorage or from an API request
-            jwt_token = None
+            if not jwt_token:
+                raise AuthenticationError("Login response did not contain a token")
 
-            # Try to capture JWT from a network request
-            async def capture_jwt(route):
-                nonlocal jwt_token
-                request = route.request
-                auth_header = request.headers.get("authorization", "")
-                if auth_header.startswith("Bearer "):
-                    jwt_token = auth_header[7:]
-                await route.continue_()
+            # Extract cookies from the client (they were updated by the login response)
+            cookies = {}
+            for cookie in client.cookies.jar:
+                if "payhoa" in cookie.domain:
+                    cookies[cookie.name] = cookie.value
 
-            await context.route("**/core.payhoa.com/**", capture_jwt)
-
-            # Trigger an API call to capture the token
-            await page.goto(f"{APP_URL}/dashboard")
-            await asyncio.sleep(2)  # Wait for API calls
-
-            # Get cookies
-            cookies = await context.cookies()
-
-            # Extract org_id from JWT if we got one
-            org_id = None
-            if jwt_token:
-                try:
-                    import base64
-                    # Decode JWT payload (middle part)
-                    payload_b64 = jwt_token.split(".")[1]
-                    # Add padding if needed
-                    payload_b64 += "=" * (4 - len(payload_b64) % 4)
-                    payload = json.loads(base64.urlsafe_b64decode(payload_b64))
-                    org_id = payload.get("legfi", {}).get("orgId")
-                except Exception as e:
-                    logger.warning(f"Failed to decode JWT: {e}")
-
-            await browser.close()
-
-        if not jwt_token:
-            raise AuthenticationError("Failed to capture JWT token during login")
+        # Extract org_id from JWT payload
+        org_id = None
+        try:
+            payload = self._decode_jwt(jwt_token)
+            org_id = payload.get("legfi", {}).get("orgId")
+        except Exception as e:
+            logger.warning(f"Failed to decode JWT: {e}")
 
         self._session_data = {
             "jwt_token": jwt_token,
-            "cookies": {c["name"]: c["value"] for c in cookies if "payhoa" in c.get("domain", "")},
+            "cookies": cookies,
             "org_id": org_id,
         }
 
