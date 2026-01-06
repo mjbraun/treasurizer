@@ -7,6 +7,7 @@ from fastmcp import FastMCP
 
 from treasurizer.client import get_client
 from treasurizer.tools.accounts import register_account_tools
+from treasurizer.tools.reconciliation import register_reconciliation_tools
 from treasurizer.tools.reports import register_report_tools
 from treasurizer.tools.transactions import register_transaction_tools
 
@@ -43,6 +44,13 @@ Common discrepancy sources:
 - Manual adjustments not synced
 - Timing differences on month-end
 - Voided checks or reversed transactions
+- Sign errors (credits recorded as debits or vice versa)
+
+For investigating discrepancies:
+- find_transactions_by_amount() to locate transactions matching a specific amount
+- get_transaction_detail() to see raw API fields including originalAmount sign
+- find_potential_sign_errors() to identify transactions with suspicious signs
+- compare_transaction_totals() to calculate period totals for bank statement comparison
 """,
     )
 
@@ -50,6 +58,7 @@ Common discrepancy sources:
     register_account_tools(mcp, get_client)
     register_transaction_tools(mcp, get_client)
     register_report_tools(mcp, get_client)
+    register_reconciliation_tools(mcp, get_client)
 
     return mcp
 
