@@ -250,6 +250,7 @@ class PayHOASession:
 
             jwt_token = self._session_data.get("jwt_token", "")
             cookies = self._session_data.get("cookies", {})
+            xsrf_token = urllib.parse.unquote(cookies.get("XSRF-TOKEN", ""))
 
             self._client = httpx.AsyncClient(
                 base_url=API_BASE_URL,
@@ -261,6 +262,7 @@ class PayHOASession:
                     "Accept": "application/json",
                     "Origin": APP_URL,
                     "Referer": f"{APP_URL}/",
+                    "x-xsrf-token": xsrf_token,
                 },
                 cookies=cookies,
             )
@@ -280,6 +282,13 @@ class PayHOASession:
         if path.startswith("/") and not path.startswith("/organizations"):
             path = f"/organizations/{self.org_id}{path}"
         return await client.post(path, **kwargs)
+
+    async def patch(self, path: str, **kwargs: Any) -> httpx.Response:
+        """Make an authenticated PATCH request."""
+        client = self._get_client()
+        if path.startswith("/") and not path.startswith("/organizations"):
+            path = f"/organizations/{self.org_id}{path}"
+        return await client.patch(path, **kwargs)
 
     async def close(self) -> None:
         """Close the HTTP client."""

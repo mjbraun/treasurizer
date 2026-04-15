@@ -1,18 +1,17 @@
-# ABOUTME: Project configuration for Treasurizer MCP server
+# ABOUTME: Project configuration for Treasurizer CLI
 # ABOUTME: PayHOA integration for condo association accounting
 
 [project]
 name = "treasurizer"
 version = "0.1.0"
-description = "MCP server for PayHOA condo association accounting"
+description = "CLI for PayHOA condo association accounting"
 readme = "README.md"
 requires-python = ">=3.11"
 
 dependencies = [
-    "fastmcp>=2.0.0,<3",
     "httpx>=0.27.0",
     "pydantic>=2.0.0",
-    "playwright>=1.57.0",
+    "typer>=0.12.0",
 ]
 
 [project.optional-dependencies]
@@ -24,7 +23,7 @@ dev = [
 ]
 
 [project.scripts]
-treasurizer = "treasurizer.server:main"
+treasurizer = "treasurizer.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -44,3 +43,8 @@ strict = true
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[dependency-groups]
+dev = [
+    "pdfplumber>=0.11.9",
+]
