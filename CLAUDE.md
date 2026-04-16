@@ -97,6 +97,7 @@ Monthly dues: **$1,000/unit/month** (charge template ID 39201, bills on the 1st)
 | 989904 | Special Assessments |
 | 1453924 | CapEx |
 | 1454904 | Master Association Dues |
+| 2006642 | Interest Income |
 
 ## PayHOA API Notes
 
