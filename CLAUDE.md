@@ -59,6 +59,34 @@ treasurizer reconciliation unmatched-deposits [--from DATE] [--to DATE] [--toler
 uv run python scripts/chase_audit.py [--from DATE] [--json] [--tolerance-days N]
 ```
 
+## Review & reconciliation workflow
+
+The recurring "review/categorize transactions and assign payments" pass. Run it periodically and after any check is deposited.
+
+1. **Pull current state.**
+   - `transactions unreviewed` - anything flagged unreviewed by PayHOA.
+   - `transactions list --account 56797 --per-page 25` and `--account 59010` - scan recent activity for `category_id: null` (uncategorized) or `is_approved: false` (unapproved). Reviewing = give it a category, then approve.
+   - `units list` - current balances and past-due amounts.
+   - Use `transactions detail TXN_ID` when direction is unclear: it returns `original_amount`, `sign_interpretation` (CREDIT=money in / DEBIT=money out), and `has_splits`/`split_count`.
+
+2. **Categorize, then approve.** Apply with `transactions update TXN_ID --category ID --approve`. Add `--memo` for context on large/one-off items. Common mappings:
+   - City of Chicago water (`CTYCHGO ... WATE`) -> Water (854807)
+   - Peoples Gas (`PEOPLES GAS`) -> Gas (854780)
+   - ComEd (`COMED`) -> Electricity (854777)
+   - NSF / stop-payment / item fees -> Bank Fees (854773)
+   - IL Secretary of State -> Licenses & Permits (854791)
+   - Savings<->checking transfers, Chase sweeps, ACH account-verify micro-deposits -> Miscellaneous (854793)
+   - Interest Paid (savings) -> Interest Income (2006642)
+   - `PayHOA Deposit` credits -> Assessments (854772). These are PayHOA's ACH settlements for unit ACH/card payments; they already carry a split (`split_count >= 1`) that assigns them to the right unit, so only the bank-side category is missing.
+
+3. **Don't guess on judgment calls - flag for Matt.** Large outgoing checks (`Inclearing Check`, `Online BillPay Check`), and anything where the category materially affects the books (e.g. major masonry/tuckpointing or roof work is **CapEx (1453924)**, not Building Repairs). Confirm what the check was for and CapEx-vs-expense before applying.
+
+4. **Reconcile check payers (Unit 2 today).** Unit 2 pays by check, which does NOT auto-credit the unit ledger (see the gap section below).
+   - `units audit 427032 --from <recent>` - matches Unit 2 payment-groups to bank deposits. `unmatched_pgs` / `suspect_deposits` empty = clean.
+   - `reconciliation unmatched-deposits --from <recent>` - **always pass `--from`**; the default range reaches back to 2021 and floods output with pre-PayHOA Buildium ACH noise.
+   - If a real uncredited check deposit turns up, it needs a **manual payment-group entry in the PayHOA UI** - the API cannot create payment-groups (`POST /payment-groups` returns 405). The CLI cannot "assign" a payment; it can only detect the gap.
+   - If there is no incoming check deposit for a month, the unit genuinely hasn't paid - report the past-due, don't invent an assignment.
+
 ## Known IDs
 
 ### Organization
@@ -107,6 +135,7 @@ Monthly dues: **$1,000/unit/month** (charge template ID 39201, bills on the 1st)
 - Auth: JWT Bearer token + `x-xsrf-token` header (URL-decoded from XSRF-TOKEN cookie)
 - The `x-xsrf-token` header is **required for all mutating requests** (PATCH, POST). Without it, requests return 200 but silently do nothing.
 - Session cached at `~/.treasurizer/session.json`
+- Credentials: `PAYHOA_EMAIL`/`PAYHOA_PASSWORD` env vars take precedence; otherwise read from 1Password (`op://Private/app.payhoa.com`). The 1Password account defaults to the personal account `my.1password.com` and is overridable via `PAYHOA_OP_ACCOUNT`. (Matt's global default of `--account flyio` does NOT apply here - PayHOA lives in the personal vault.)
 
 ### Ledger Balance Computation
 `fixedAsset.balance` is not returned by the API. Compute ledger balance as:

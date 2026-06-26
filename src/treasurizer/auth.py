@@ -27,19 +27,23 @@ APP_URL = "https://app.payhoa.com"
 # Required headers for API calls
 LEGFI_SITE_ID = "2"
 
+# 1Password account holding the PayHOA credentials. Override with PAYHOA_OP_ACCOUNT.
+DEFAULT_OP_ACCOUNT = "my.1password.com"
+
 
 def get_credentials_from_1password() -> tuple[str, str]:
     """Retrieve PayHOA credentials from 1Password CLI."""
+    account = os.environ.get("PAYHOA_OP_ACCOUNT", DEFAULT_OP_ACCOUNT)
     try:
         username = subprocess.run(
-            ["op", "read", "op://Private/app.payhoa.com/username"],
+            ["op", "read", "--account", account, "op://Private/app.payhoa.com/username"],
             capture_output=True,
             text=True,
             check=True,
         ).stdout.strip()
 
         password = subprocess.run(
-            ["op", "read", "op://Private/app.payhoa.com/password"],
+            ["op", "read", "--account", account, "op://Private/app.payhoa.com/password"],
             capture_output=True,
             text=True,
             check=True,
